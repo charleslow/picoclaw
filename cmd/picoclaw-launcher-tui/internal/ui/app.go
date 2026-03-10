@@ -249,6 +249,10 @@ func (s *appState) applyChangesValidated() bool {
 		s.showMessage("Validation failed", err.Error())
 		return false
 	}
+	if err := s.config.ValidateTelegramBots(); err != nil {
+		s.showMessage("Validation failed", err.Error())
+		return false
+	}
 	if err := s.validateAgentModel(); err != nil {
 		s.showMessage("Validation failed", err.Error())
 		return false

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"sync/atomic"
 
 	"github.com/caarlos0/env/v11"
@@ -217,9 +218,10 @@ func (d *AgentDefaults) GetModelName() string {
 }
 
 type ChannelsConfig struct {
-	WhatsApp   WhatsAppConfig   `json:"whatsapp"`
-	Telegram   TelegramConfig   `json:"telegram"`
-	Feishu     FeishuConfig     `json:"feishu"`
+	WhatsApp     WhatsAppConfig   `json:"whatsapp"`
+	Telegram     TelegramConfig   `json:"telegram"`
+	TelegramBots []TelegramConfig `json:"telegram_bots,omitempty"`
+	Feishu       FeishuConfig     `json:"feishu"`
 	Discord    DiscordConfig    `json:"discord"`
 	MaixCam    MaixCamConfig    `json:"maixcam"`
 	QQ         QQConfig         `json:"qq"`
@@ -262,6 +264,7 @@ type WhatsAppConfig struct {
 }
 
 type TelegramConfig struct {
+	ID                 string              `json:"id,omitempty"`
 	Enabled            bool                `json:"enabled"                 env:"PICOCLAW_CHANNELS_TELEGRAM_ENABLED"`
 	Token              string              `json:"token"                   env:"PICOCLAW_CHANNELS_TELEGRAM_TOKEN"`
 	BaseURL            string              `json:"base_url"                env:"PICOCLAW_CHANNELS_TELEGRAM_BASE_URL"`
@@ -928,6 +931,42 @@ func (c *Config) ValidateModelList() error {
 	for i := range c.ModelList {
 		if err := c.ModelList[i].Validate(); err != nil {
 			return fmt.Errorf("model_list[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+var validTelegramBotID = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+
+// ValidateTelegramBots checks that telegram_bots entries have valid, unique IDs
+// and that the legacy telegram config is not used alongside telegram_bots.
+func (c *Config) ValidateTelegramBots() error {
+	hasSingle := c.Channels.Telegram.Enabled && c.Channels.Telegram.Token != ""
+	hasBots := len(c.Channels.TelegramBots) > 0
+
+	if hasSingle && hasBots {
+		return fmt.Errorf("cannot use both channels.telegram and channels.telegram_bots; " +
+			"move the single-bot config into the telegram_bots list")
+	}
+
+	if !hasBots {
+		return nil
+	}
+
+	seen := make(map[string]bool, len(c.Channels.TelegramBots))
+	for i, bot := range c.Channels.TelegramBots {
+		if bot.ID == "" {
+			return fmt.Errorf("telegram_bots[%d]: id is required", i)
+		}
+		if !validTelegramBotID.MatchString(bot.ID) {
+			return fmt.Errorf("telegram_bots[%d]: id %q must match [a-z0-9][a-z0-9_-]*", i, bot.ID)
+		}
+		if seen[bot.ID] {
+			return fmt.Errorf("telegram_bots[%d]: duplicate id %q", i, bot.ID)
+		}
+		seen[bot.ID] = true
+		if bot.Token == "" {
+			return fmt.Errorf("telegram_bots[%d] (%s): token is required", i, bot.ID)
 		}
 	}
 	return nil

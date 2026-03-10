@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -206,11 +207,52 @@ func (m *Manager) initChannel(name, displayName string) {
 	}
 }
 
+// wireAndRegister injects MediaStore, PlaceholderRecorder, and Owner into a
+// channel and registers it in the manager. This is used for channels created
+// outside the factory system (e.g. multi-instance telegram bots).
+func (m *Manager) wireAndRegister(name, displayName string, ch Channel) {
+	if m.mediaStore != nil {
+		if setter, ok := ch.(interface{ SetMediaStore(s media.MediaStore) }); ok {
+			setter.SetMediaStore(m.mediaStore)
+		}
+	}
+	if setter, ok := ch.(interface{ SetPlaceholderRecorder(r PlaceholderRecorder) }); ok {
+		setter.SetPlaceholderRecorder(m)
+	}
+	if setter, ok := ch.(interface{ SetOwner(ch Channel) }); ok {
+		setter.SetOwner(ch)
+	}
+	m.channels[name] = ch
+	logger.InfoCF("channels", "Channel enabled successfully", map[string]any{
+		"channel": displayName,
+	})
+}
+
 func (m *Manager) initChannels() error {
 	logger.InfoC("channels", "Initializing channel manager")
 
 	if m.config.Channels.Telegram.Enabled && m.config.Channels.Telegram.Token != "" {
 		m.initChannel("telegram", "Telegram")
+	}
+
+	for _, botCfg := range m.config.Channels.TelegramBots {
+		if !botCfg.Enabled || botCfg.Token == "" {
+			continue
+		}
+		name := "telegram:" + botCfg.ID
+		displayName := "Telegram:" + botCfg.ID
+		logger.DebugCF("channels", "Attempting to initialize channel", map[string]any{
+			"channel": displayName,
+		})
+		ch, err := newTelegramFromConfig(botCfg, m.config, m.bus)
+		if err != nil {
+			logger.ErrorCF("channels", "Failed to initialize channel", map[string]any{
+				"channel": displayName,
+				"error":   err.Error(),
+			})
+			continue
+		}
+		m.wireAndRegister(name, displayName, ch)
 	}
 
 	if m.config.Channels.WhatsApp.Enabled {
@@ -450,7 +492,11 @@ func (m *Manager) StopAll(ctx context.Context) error {
 // for the given channel name.
 func newChannelWorker(name string, ch Channel) *channelWorker {
 	rateVal := float64(defaultRateLimit)
-	if r, ok := channelRateConfig[name]; ok {
+	rateName := name
+	if idx := strings.IndexByte(rateName, ':'); idx != -1 {
+		rateName = rateName[:idx]
+	}
+	if r, ok := channelRateConfig[rateName]; ok {
 		rateVal = r
 	}
 	burst := int(math.Max(1, math.Ceil(rateVal/2)))

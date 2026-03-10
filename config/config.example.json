@@ -59,6 +59,8 @@
       ],
       "reasoning_channel_id": ""
     },
+    "_telegram_bots_comment": "Use telegram_bots instead of telegram to run multiple bots. Cannot be used together with telegram.",
+    "telegram_bots": [],
     "discord": {
       "enabled": false,
       "token": "YOUR_DISCORD_BOT_TOKEN",

@@ -40,20 +40,24 @@ var (
 
 type TelegramChannel struct {
 	*channels.BaseChannel
-	bot     *telego.Bot
-	bh      *th.BotHandler
-	config  *config.Config
-	chatIDs map[string]int64
-	ctx     context.Context
-	cancel  context.CancelFunc
+	bot         *telego.Bot
+	bh          *th.BotHandler
+	config      *config.Config
+	telegramCfg config.TelegramConfig
+	chatIDs     map[string]int64
+	ctx         context.Context
+	cancel      context.CancelFunc
 
 	registerFunc     func(context.Context, []commands.Definition) error
 	commandRegCancel context.CancelFunc
 }
 
-func NewTelegramChannel(cfg *config.Config, bus *bus.MessageBus) (*TelegramChannel, error) {
+func NewTelegramChannel(cfg *config.Config, msgBus *bus.MessageBus) (*TelegramChannel, error) {
+	return NewTelegramChannelFromConfig(cfg.Channels.Telegram, cfg, msgBus)
+}
+
+func NewTelegramChannelFromConfig(telegramCfg config.TelegramConfig, cfg *config.Config, msgBus *bus.MessageBus) (*TelegramChannel, error) {
 	var opts []telego.BotOption
-	telegramCfg := cfg.Channels.Telegram
 
 	if telegramCfg.Proxy != "" {
 		proxyURL, parseErr := url.Parse(telegramCfg.Proxy)
@@ -66,7 +70,6 @@ func NewTelegramChannel(cfg *config.Config, bus *bus.MessageBus) (*TelegramChann
 			},
 		}))
 	} else if os.Getenv("HTTP_PROXY") != "" || os.Getenv("HTTPS_PROXY") != "" {
-		// Use environment proxy if configured
 		opts = append(opts, telego.WithHTTPClient(&http.Client{
 			Transport: &http.Transport{
 				Proxy: http.ProxyFromEnvironment,
@@ -83,10 +86,15 @@ func NewTelegramChannel(cfg *config.Config, bus *bus.MessageBus) (*TelegramChann
 		return nil, fmt.Errorf("failed to create telegram bot: %w", err)
 	}
 
+	channelName := "telegram"
+	if telegramCfg.ID != "" {
+		channelName = "telegram:" + telegramCfg.ID
+	}
+
 	base := channels.NewBaseChannel(
-		"telegram",
+		channelName,
 		telegramCfg,
-		bus,
+		msgBus,
 		telegramCfg.AllowFrom,
 		channels.WithMaxMessageLength(4000),
 		channels.WithGroupTrigger(telegramCfg.GroupTrigger),
@@ -94,10 +102,11 @@ func NewTelegramChannel(cfg *config.Config, bus *bus.MessageBus) (*TelegramChann
 	)
 
 	return &TelegramChannel{
-		BaseChannel: base,
-		bot:         bot,
-		config:      cfg,
-		chatIDs:     make(map[string]int64),
+		BaseChannel:  base,
+		bot:          bot,
+		config:       cfg,
+		telegramCfg:  telegramCfg,
+		chatIDs:      make(map[string]int64),
 	}, nil
 }
 
@@ -278,7 +287,7 @@ func (c *TelegramChannel) EditMessage(ctx context.Context, chatID string, messag
 // It sends a placeholder message (e.g. "Thinking... 💭") that will later be
 // edited to the actual response via EditMessage (channels.MessageEditor).
 func (c *TelegramChannel) SendPlaceholder(ctx context.Context, chatID string) (string, error) {
-	phCfg := c.config.Channels.Telegram.Placeholder
+	phCfg := c.telegramCfg.Placeholder
 	if !phCfg.Enabled {
 		return "", nil
 	}
