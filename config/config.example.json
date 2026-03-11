@@ -59,7 +59,7 @@
       ],
       "reasoning_channel_id": ""
     },
-    "_telegram_bots_comment": "Use telegram_bots instead of telegram to run multiple bots. Cannot be used together with telegram.",
+    "_telegram_bots_comment": "Use telegram_bots instead of telegram to run multiple bots. Cannot be used together with telegram. Shorthand: set PICOCLAW_CHANNELS_TELEGRAM_TOKEN='alice:TOKEN_A,bob:TOKEN_B' to auto-expand.",
     "telegram_bots": [],
     "discord": {
       "enabled": false,

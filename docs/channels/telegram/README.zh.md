@@ -72,4 +72,30 @@ Telegram Channel 通过 Telegram 机器人 API 使用长轮询实现基于机器
 
 每个机器人注册的通道名称为 `telegram:<id>`（例如 `telegram:alice`），可以在 `bindings` 中使用此名称将不同机器人路由到不同的 agent。
 
-**限制：** `telegram_bots` 仅支持配置文件方式，不支持环境变量覆盖。
+### 通过环境变量配置多机器人
+
+如果不想使用配置文件，也可以通过环境变量快速配置多个机器人。将多个 `id:token` 对用逗号分隔，设置到 `PICOCLAW_CHANNELS_TELEGRAM_TOKEN` 环境变量中：
+
+```bash
+export PICOCLAW_CHANNELS_TELEGRAM_TOKEN="alice:TOKEN_A,bob:TOKEN_B"
+```
+
+启动时，系统会自动将其展开为 `telegram_bots` 配置，等同于：
+
+```json
+{
+  "channels": {
+    "telegram_bots": [
+      { "id": "alice", "enabled": true, "token": "TOKEN_A" },
+      { "id": "bob",   "enabled": true, "token": "TOKEN_B" }
+    ]
+  }
+}
+```
+
+每个机器人会继承环境变量中设置的 `base_url`、`proxy` 和 `allow_from` 等共享配置（即 `PICOCLAW_CHANNELS_TELEGRAM_BASE_URL`、`PICOCLAW_CHANNELS_TELEGRAM_PROXY` 等）。
+
+**注意：**
+- 格式为 `id:token`，其中 `id` 是机器人标识符，`token` 是 BotFather 提供的 API Token。
+- 如果 Token 中不包含逗号（即只有一个 Token），则按传统单机器人模式处理。
+- 如需为每个机器人设置不同的 `placeholder`、`group_trigger` 等配置，请使用配置文件中的 `telegram_bots` 列表。

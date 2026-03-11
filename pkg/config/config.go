@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"sync/atomic"
 
 	"github.com/caarlos0/env/v11"
@@ -804,6 +805,35 @@ func LoadConfig(path string) (*Config, error) {
 }
 
 func (c *Config) migrateChannelConfigs() {
+	// Telegram: comma-separated "id:token" in the token env var expands to telegram_bots.
+	// Format: "alice:TOKEN_A,bob:TOKEN_B" → two telegram_bots entries.
+	// A single token without commas is left as the legacy single-bot config.
+	if len(c.Channels.TelegramBots) == 0 && strings.Contains(c.Channels.Telegram.Token, ",") {
+		parts := strings.Split(c.Channels.Telegram.Token, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			id, token, ok := strings.Cut(part, ":")
+			if !ok {
+				// No colon — skip malformed entry
+				continue
+			}
+			c.Channels.TelegramBots = append(c.Channels.TelegramBots, TelegramConfig{
+				ID:         strings.TrimSpace(id),
+				Enabled:    true,
+				Token:      strings.TrimSpace(token),
+				BaseURL:    c.Channels.Telegram.BaseURL,
+				Proxy:      c.Channels.Telegram.Proxy,
+				AllowFrom:  c.Channels.Telegram.AllowFrom,
+			})
+		}
+		// Clear the single-bot config so validation doesn't flag a conflict
+		c.Channels.Telegram.Token = ""
+		c.Channels.Telegram.Enabled = false
+	}
+
 	// Discord: mention_only -> group_trigger.mention_only
 	if c.Channels.Discord.MentionOnly && !c.Channels.Discord.GroupTrigger.MentionOnly {
 		c.Channels.Discord.GroupTrigger.MentionOnly = true
